@@ -1,0 +1,20 @@
+# 真实 WireGuard 接入 - HideWG client 端配置
+# WireGuard client peer endpoint -> 127.0.0.1:51830 (本配置的 inner_listen_port)
+shared_secret: hidewg-real-test-secret
+session_id: 0x48445747
+
+inner_listen_host: 127.0.0.1
+inner_listen_port: 51830
+
+outer_listen_host: 0.0.0.0
+outer_listen_port: 55820
+peer_host: 127.0.0.1
+peer_port: 55821
+
+max_fragment_payload: 1300
+padding_buckets: [96, 128, 192, 256, 384, 512, 768, 1024, 1280]
+padding_jitter_chance: 0.20
+timing_jitter_ms: 2.5
+state_path: .hidewg/real_client_state.json
+log_path: .hidewg/real_client_runtime.jsonl
+pid_path: .hidewg/real_client.pid

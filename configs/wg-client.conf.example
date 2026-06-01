@@ -1,0 +1,11 @@
+[Interface]
+PrivateKey = <client-private-key>
+Address = 10.66.0.2/32
+ListenPort = 51820
+MTU = 1280
+
+[Peer]
+PublicKey = <server-public-key>
+AllowedIPs = 10.66.0.1/32
+Endpoint = 127.0.0.1:51830
+PersistentKeepalive = 25

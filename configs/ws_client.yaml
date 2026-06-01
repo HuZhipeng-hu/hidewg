@@ -1,0 +1,49 @@
+# WebSocket-over-TLS 客户端配置
+# 流量外观：类似实时 Web 应用（聊天/通知/流媒体）
+shared_secret: 661eacbc95a3016cd2c5e91361a303f6
+session_id: 0x48445747
+
+inner_listen_host: 127.0.0.1
+inner_listen_port: 51830
+
+outer_listen_host: 0.0.0.0
+outer_listen_port: 55820
+peer_host: 1.95.65.51
+peer_port: 443
+
+wireguard_host: 127.0.0.1
+wireguard_port: 51820
+
+max_fragment_payload: 1300
+padding_buckets: [96, 128, 192, 256, 384, 512, 768, 1024, 1280]
+padding_jitter_chance: 0.20
+timing_jitter_ms: 2.5
+
+# ===== 反检测填充策略 =====
+padding_mode: adaptive
+adaptive_padding: true
+adapt_window_size: 128
+adapt_strength: 0.6
+bucket_jitter_sigma: 15.0
+burst_timing: true
+
+# AmneziaWG 借鉴
+junk_count: 3
+junk_min_size: 64
+junk_max_size: 384
+noise_prefix_min: 0
+noise_prefix_max: 24
+s4_padding_max: 48
+
+cover_traffic: true
+cover_rate_hz: 0.5
+cover_burst_max: 2
+cover_bidirectional: true
+bucket_drift: 8
+
+# WebSocket-over-TLS + nginx 反代
+ws_path: /ws
+
+state_path: .hidewg/client_state.json
+log_path: .hidewg/client_runtime.jsonl
+pid_path: .hidewg/client.pid

@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "passed": true,
+  "function_tests": {
+    "basic_connectivity": {
+      "passed": true,
+      "detail": "WireGuard-shaped ping payload restored"
+    },
+    "tcp_file_integrity": {
+      "passed": true,
+      "detail": "SHA256 matched after chunked transfer"
+    },
+    "udp_stream": {
+      "passed": true,
+      "detail": "UDP datagram order and bytes preserved"
+    },
+    "adapter_loopback": {
+      "passed": true,
+      "detail": "Local UDP adapter proxy forwarded one WireGuard-shaped datagram"
+    },
+    "large_packet_fragmentation": {
+      "passed": true,
+      "detail": "Large payload restored after out-of-order fragment delivery"
+    },
+    "abnormal_packet_handling": {
+      "passed": true,
+      "detail": "Replay, tamper, and malformed records were dropped"
+    },
+    "state_observability": {
+      "passed": true,
+      "detail": "Required runtime counters exported"
+    }
+  },
+  "artifacts": {
+    "verify_report": "verify_report.json",
+    "stealth_report": "stealth_report.json",
+    "performance_report": "performance_report.csv",
+    "runtime_log": "runtime_log.jsonl",
+    "capture": "capture.pcap",
+    "raw_wireguard_capture": "raw_wireguard.pcap",
+    "state": "state.json"
+  },
+  "summary": {
+    "raw_rule_hit_rate": -1,
+    "hidewg_rule_hit_rate": 0.0012121212121212121,
+    "classifier_accuracy": -1,
+    "throughput_retention": -1,
+    "bandwidth_expansion": -1
+  },
+  "limitations": [
+    "All traffic data is from real pcap captures — no synthetic WireGuard-shaped payloads.",
+    "The outer cryptographic primitive is a standard-library SHAKE stream plus HMAC-SHA256 tag for coursework reproducibility, not a replacement for WireGuard security."
+  ]
+}

@@ -1,0 +1,68 @@
+# Example client-side HideWG proxy config.
+# Point the local WireGuard peer endpoint to 127.0.0.1:51830.
+shared_secret: 661eacbc95a3016cd2c5e91361a303f6
+session_id: 0x48445747
+
+inner_listen_host: 127.0.0.1
+inner_listen_port: 51830
+
+outer_listen_host: 0.0.0.0
+outer_listen_port: 55820
+peer_host: 1.95.65.51
+# 通过 nginx:443 接入 (WSS → nginx TLS 终止 → WS → HideWG)
+peer_port: 443
+ws_path: /ws
+
+wireguard_host: 127.0.0.1
+wireguard_port: 51820
+
+max_fragment_payload: 1300
+# min_fragment_payload: 434   # 默认 max/3，随机碎片化下限
+padding_buckets: [96, 128, 192, 256, 384, 512, 768, 1024, 1280]
+padding_jitter_chance: 0.20
+timing_jitter_ms: 2.5
+
+# ===== 反检测填充策略 =====
+# 填充模式: "mimicry" (流量模拟) / "adaptive" (桶填充+自适应) / "continuous" (连续分布)
+# mimicry: 模拟真实 VoIP/聊天流量包长分布，~50-80 种唯一包长 (推荐)
+# adaptive: 高斯抖动打破桶对齐，但产生 ~385 种包长
+# continuous: 连续分布，对 RF 防御强但包长种类多
+padding_mode: mimicry
+
+# mimicry 模式参数
+mimicry_jitter_std: 8.0     # 聚类中心抖动 σ
+burst_timing: true
+
+# 连续填充分布 (padding_mode=continuous 时使用)
+# padding_distribution: multimodal  # multimodal / triangular / uniform / beta
+# padding_reshape_interval: 64
+
+# ===== AmneziaWG 借鉴的反检测增强 =====
+
+# 垃圾包注入（AmneziaWG Jc/Jmin/Jmax）
+junk_count: 3
+junk_min_size: 64
+junk_max_size: 384
+
+# 噪声前缀 + S4 随机前填充（AmneziaWG S4）
+# mimicry 模式下降低 S4 强度，避免过度随机化
+noise_prefix_min: 0
+noise_prefix_max: 8
+s4_padding_max: 12          # S4 随机前填充 (0~12 字节)
+
+# 连续掩护流量（泊松过程）
+cover_traffic: true
+cover_rate_hz: 0.5
+cover_burst_max: 2
+cover_bidirectional: true
+
+# 桶边界随机化
+bucket_drift: 8
+
+# ===== 传输层 =====
+# WebSocket-over-TLS + nginx 反代：Wireshark 看到标准 HTTPS 流量
+# 客户端 → WSS (TLS 1.3) → nginx:443 → WS (明文) → HideWG:8443
+
+state_path: .hidewg/client_state.json
+log_path: .hidewg/client_runtime.jsonl
+pid_path: .hidewg/client.pid

@@ -1,0 +1,24 @@
+# 真实 WireGuard 接入 - HideWG server 端配置
+# WireGuard server peer endpoint -> 127.0.0.1:51831 (本配置的 inner_listen_port)
+# wireguard_host:wireguard_port 指向 WireGuard server 的 listen port
+shared_secret: hidewg-real-test-secret
+session_id: 0x48445747
+
+inner_listen_host: 127.0.0.1
+inner_listen_port: 51831
+
+outer_listen_host: 0.0.0.0
+outer_listen_port: 55821
+peer_host: 127.0.0.1
+peer_port: 55820
+
+wireguard_host: 127.0.0.1
+wireguard_port: 51821
+
+max_fragment_payload: 1300
+padding_buckets: [96, 128, 192, 256, 384, 512, 768, 1024, 1280]
+padding_jitter_chance: 0.20
+timing_jitter_ms: 2.5
+state_path: .hidewg/real_server_state.json
+log_path: .hidewg/real_server_runtime.jsonl
+pid_path: .hidewg/real_server.pid

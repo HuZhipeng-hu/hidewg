@@ -1,0 +1,21 @@
+{
+  "pid": 30248,
+  "role": "verify",
+  "session_state": "COMPLETE",
+  "uptime_seconds": 0.828,
+  "inner_packets_sent": 138,
+  "inner_packets_received": 138,
+  "outer_packets_sent": 272,
+  "outer_packets_received": 272,
+  "inner_bytes_sent": 138711,
+  "inner_bytes_received": 138711,
+  "outer_bytes_sent": 181536,
+  "outer_bytes_received": 181536,
+  "padding_bytes": 28137,
+  "fragment_count": 265,
+  "reassembly_failures": 1,
+  "authentication_failures": 1,
+  "replay_drops": 1,
+  "current_throughput_bps": 2680405.8,
+  "current_latency_estimate_ms": 0.0
+}

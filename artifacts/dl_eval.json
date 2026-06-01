@@ -1,0 +1,27 @@
+{
+  "data_source": "all_real_capture",
+  "description": "所有流量类别均来自真实抓包，无任何合成数据",
+  "pcap_files": {
+    "hideg": "artifacts\\real_hidewg.pcap",
+    "wireguard": "artifacts\\real_wg_inner.pcap",
+    "normal_https": "artifacts\\real_normal.pcap"
+  },
+  "hideg_packets": 2213,
+  "wireguard_packets": 1230,
+  "normal_packets": 1300,
+  "window_size": 50,
+  "train_samples": 311,
+  "test_samples": 134,
+  "results": {
+    "NearestCentroid": 1.0,
+    "RandomForest-50": 1.0,
+    "MLP-256": 0.9925,
+    "CNN-1D": 0.9701
+  },
+  "class_names": [
+    "HideWG (real)",
+    "WireGuard (real)",
+    "Normal-HTTPS (real)"
+  ],
+  "synthetic_data_used": false
+}

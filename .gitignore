@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vs/
+.vscode/
+*.swp
+
+# Claude
+.claude/
+
+# OS
+$null
+Thumbs.db
+Desktop.ini
+
+# Runtime & data
+.hidewg/
+*.pcap
+*.key
+*.pem
+
+# State files
+state.json

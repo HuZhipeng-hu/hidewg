@@ -1,0 +1,65 @@
+# Example server-side HideWG proxy config.
+# Point the server WireGuard peer endpoint to 127.0.0.1:51831.
+shared_secret: 661eacbc95a3016cd2c5e91361a303f6
+session_id: 0x48445747
+
+inner_listen_host: 127.0.0.1
+inner_listen_port: 51831
+
+outer_listen_host: 0.0.0.0
+outer_listen_port: 55821
+# 客户端在 NAT 后面，启动后会自动学习客户端的真实地址
+peer_host: 127.0.0.1
+peer_port: 55820
+
+wireguard_host: 127.0.0.1
+wireguard_port: 51820
+
+max_fragment_payload: 1300
+padding_buckets: [96, 128, 192, 256, 384, 512, 768, 1024, 1280]
+padding_jitter_chance: 0.20
+timing_jitter_ms: 2.5
+
+# 反深度学习防御
+# 填充模式: "mimicry" (流量模拟，推荐) / "adaptive" (桶+自适应)
+padding_mode: mimicry
+mimicry_jitter_std: 8.0
+burst_timing: true
+
+# ===== AmneziaWG 借鉴的反检测增强 =====
+
+# 垃圾包注入（AmneziaWG Jc/Jmin/Jmax）
+# 在会话首次发送前注入随机垃圾包，打乱握手特征
+junk_count: 3
+junk_min_size: 64
+junk_max_size: 384
+
+# 噪声前缀（AmneziaWG S4）
+# mimicry 模式下降低 S4 强度，避免过度随机化
+noise_prefix_min: 0
+noise_prefix_max: 8
+s4_padding_max: 12
+
+# 连续掩护流量
+# 替代空闲触发的突发掩护，改为持续低速率双向掩护
+cover_traffic: true
+cover_rate_hz: 0.5
+cover_burst_max: 2
+cover_bidirectional: true
+
+# 桶边界随机化
+# 定期对桶边界施加 ±N 字节偏移
+bucket_drift: 8
+
+# ===== 传输层 =====
+# WebSocket-over-TLS + nginx 反代：Wireshark 看到标准 HTTPS 流量
+# 客户端 → WSS (TLS 1.3) → nginx:443 → WS (明文) → HideWG:8443
+outer_listen_port: 8443
+tls_certfile: .hidewg/tls/server.pem
+tls_keyfile: .hidewg/tls/server-key.pem
+# nginx 已做 TLS 终止，HideWG 收到的是明文 HTTP/WS
+tls_terminate: true
+
+state_path: .hidewg/server_state.json
+log_path: .hidewg/server_runtime.jsonl
+pid_path: .hidewg/server.pid

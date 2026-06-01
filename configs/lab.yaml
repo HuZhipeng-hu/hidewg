@@ -1,0 +1,40 @@
+# Unified verification config for: ./hidewg verify --config lab.yaml --output artifacts/
+#
+# Traffic analysis requires real pcap captures. Generate them with:
+#   1. Start WireGuard + HideWG tunnel (see scripts/real_wg_test.ps1)
+#   2. Run scripts/capture_raw_wg.ps1 to capture traffic
+#   3. Or use existing captures (see paths below)
+
+shared_secret: hidewg-course-demo-secret
+session_id: 0x48445747
+max_fragment_payload: 1300
+padding_buckets: [96, 128, 192, 256, 384, 512, 768, 1024, 1280]
+padding_jitter_chance: 0.20
+seed: 20260511
+
+# Anti-DL defenses
+adaptive_padding: true
+adapt_window_size: 128
+adapt_strength: 0.6
+
+# AmneziaWG-inspired enhancements
+junk_count: 3
+junk_min_size: 64
+junk_max_size: 384
+noise_prefix_min: 0
+noise_prefix_max: 16
+cover_traffic: true
+cover_rate_hz: 0.5
+cover_burst_max: 2
+cover_bidirectional: true
+bucket_drift: 8
+
+# Real pcap paths for traffic analysis
+# HideWG outer-layer capture (from server-side tcpdump or capture script)
+hidewg_pcap: .hidewg/real_capture.pcap
+hidewg_outer_port: 55821
+
+# Raw WireGuard capture (from capture_raw_wg.ps1, inner WG ports)
+# If empty or file missing, raw WireGuard baseline comparison is skipped.
+raw_wireguard_pcap: .hidewg/captures/raw_wireguard.pcap
+wireguard_port: 51821
