@@ -16,15 +16,15 @@ wireguard_host: 127.0.0.1
 wireguard_port: 51820
 
 max_fragment_payload: 1300
-padding_buckets: [96, 128, 192, 256, 384, 512, 768, 1024, 1280]
+# 填充桶覆盖 HTTPS 典型包长范围，包含 1400B 大包
+padding_buckets: [60, 90, 128, 256, 512, 768, 1024, 1280, 1400]
 padding_jitter_chance: 0.20
-timing_jitter_ms: 2.5
+timing_jitter_ms: 0.5
 
 # 反深度学习防御
 # 填充模式: "mimicry" (流量模拟，推荐) / "adaptive" (桶+自适应)
 padding_mode: mimicry
 mimicry_jitter_std: 8.0
-burst_timing: true
 
 # ===== AmneziaWG 借鉴的反检测增强 =====
 
@@ -34,22 +34,16 @@ junk_count: 3
 junk_min_size: 64
 junk_max_size: 384
 
-# 噪声前缀（AmneziaWG S4）
-# mimicry 模式下降低 S4 强度，避免过度随机化
+# S4 关闭：让填充精确命中目标桶，不额外偏移
 noise_prefix_min: 0
-noise_prefix_max: 8
-s4_padding_max: 12
+noise_prefix_max: 0
+s4_padding_max: 0
 
-# 连续掩护流量
-# 替代空闲触发的突发掩护，改为持续低速率双向掩护
+# 掩护流量：服务器高速率发大包（模拟 HTTPS 下载响应，真实 HTTPS 入站占比 ~75%）
 cover_traffic: true
-cover_rate_hz: 0.5
-cover_burst_max: 2
+cover_rate_hz: 1.5
+cover_burst_max: 5
 cover_bidirectional: true
-
-# 桶边界随机化
-# 定期对桶边界施加 ±N 字节偏移
-bucket_drift: 8
 
 # ===== 传输层 =====
 # WebSocket-over-TLS + nginx 反代：Wireshark 看到标准 HTTPS 流量

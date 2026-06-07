@@ -91,6 +91,8 @@ class HideWGProxy:
             self.inner_forward = (str(configured_inner_host), int(configured_inner_port))
         self.learned_inner_addr: tuple[str, int] | None = None
         self.learned_peer_outer: tuple[str, int] | None = None
+        # Role detection: server sets tls_terminate, client sets ws_path
+        self.is_server = bool(config.get("tls_terminate", False))
         self.timing_jitter_ms = as_float(config, "timing_jitter_ms", 0.0)
         # Junk packet injection (AmneziaWG Jc/Jmin/Jmax)
         self.junk_injector = JunkInjector(
@@ -113,10 +115,6 @@ class HideWGProxy:
         self._cover_key = hashlib.sha256(
             str(config.get("shared_secret", "")).encode() + b":cover"
         ).digest() if self.cover_enabled else b""
-        # Burst-aware timing: longer pauses between direction changes
-        self.burst_timing = config.get("burst_timing", False)
-        self._last_direction: int | None = None
-        self._burst_count = 0
         self.state_path = Path(str(config.get("state_path", f".hidewg/{role}_state.json")))
         self.log_path = Path(str(config.get("log_path", f".hidewg/{role}_runtime.jsonl")))
         self.pid_path = Path(str(config.get("pid_path", f".hidewg/{role}.pid")))
@@ -263,7 +261,7 @@ class HideWGProxy:
             self.stats.outer_packets_sent += 1
             self.stats.outer_bytes_sent += len(junk)
         for record in records:
-            self._apply_timing(1)  # outbound direction
+            self._apply_timing()
             # Wrap with noise prefix to break discrete bucket pattern (AmneziaWG S4)
             wrapped = self.junk_injector.wrap_with_noise(record.data)
             outer_transport.send(wrapped, peer)
@@ -271,66 +269,48 @@ class HideWGProxy:
             self.stats.outer_bytes_sent += len(wrapped)
             self.stats.padding_bytes += record.padding_bytes
 
-    def _apply_timing(self, direction: int = 1) -> None:
-        """Apply timing obfuscation with realistic heavy-tailed distribution.
+    def _apply_timing(self) -> None:
+        """Apply minimal timing jitter.
 
-        Uses lognormal distribution instead of uniform — real network traffic
-        inter-arrival times follow heavy-tailed distributions, not uniform.
+        Real HTTPS traffic timing is controlled by TCP congestion control and
+        application-level request/response patterns. Adding large artificial
+        delays (24ms median) makes traffic distinguishable from normal HTTPS
+        (median IAT ~0ms). Let TCP handle timing naturally.
         """
         jitter = self.timing_jitter_ms
         if jitter <= 0:
             return
-        if self.burst_timing:
-            if direction == self._last_direction:
-                self._burst_count += 1
-                # Within-burst: lognormal short delay (5-50ms typical)
-                delay_ms = random.lognormvariate(2.0, 0.6)
-                delay_ms = max(1.0, min(delay_ms, jitter * 0.5))
-            else:
-                # Between bursts: longer lognormal pause (20-200ms)
-                self._burst_count = 1
-                self._last_direction = direction
-                delay_ms = random.lognormvariate(3.5, 0.7)
-                delay_ms = max(jitter * 0.3, min(delay_ms, jitter * 3.0))
-            time.sleep(delay_ms / 1000.0)
-        else:
-            delay_ms = random.lognormvariate(2.0, 0.8)
-            delay_ms = max(0.5, min(delay_ms, jitter * 2.0))
-            time.sleep(delay_ms / 1000.0)
+        # Minimal jitter only — TCP stack handles real timing
+        delay_ms = random.uniform(0.1, jitter)
+        time.sleep(delay_ms / 1000.0)
 
     def _inject_cover(self, outer_transport) -> None:
-        """Send cover traffic with realistic ON/OFF burst model.
+        """Send cover traffic with realistic HTTPS-like burst model.
 
-        Mimics WebSocket chat/VoIP traffic patterns:
-        - ON phase: rapid burst of packets (like typing/sending messages)
-        - OFF phase: idle period (human read/think time, 1-8 seconds)
-        - Sizes follow clustered distribution matching real traffic peaks
-        - Direction is asymmetric: server→client dominates (like a web app)
+        Real HTTPS pattern: browser sends rapid request bursts, server
+        responds with large data streams. Short idle gaps (100-500ms)
+        between page loads, not long "human think time" pauses.
         """
         if not self.cover_enabled:
             return
         now = time.monotonic()
-        # ON/OFF model: alternate between burst and idle
         if not hasattr(self, '_cover_burst_remaining'):
             self._cover_burst_remaining = 0
-            self._cover_mode = 'OFF'  # Start in idle
+            self._cover_mode = 'OFF'
 
         if self._cover_mode == 'OFF':
-            # Idle period: lognormal "human think time" (1-8 seconds typical)
-            idle = random.lognormvariate(0.5, 0.6)
-            idle = max(0.3, min(idle, 15.0))
+            # Short idle: 100-800ms (like page load gaps, not human think time)
+            idle = random.uniform(0.1, 0.8)
             if now - self._last_cover_time < idle:
                 return
-            # Transition to ON: start a burst
             self._cover_mode = 'ON'
-            self._cover_burst_remaining = random.randint(3, max(4, self.cover_burst_max * 3))
+            self._cover_burst_remaining = random.randint(5, max(8, self.cover_burst_max * 4))
             self._last_cover_time = now
 
         peer = self.learned_peer_outer or self.peer_outer
         if peer is None:
             return
 
-        # Send one packet from the current burst
         size = self._cover_packet_size()
         dummy = hashlib.shake_256(self._cover_key + os.urandom(12)).digest(size)
         outer_transport.send(dummy, peer)
@@ -342,14 +322,18 @@ class HideWGProxy:
             self._cover_mode = 'OFF'
             self._last_cover_time = now
         else:
-            # Intra-burst delay: short, like rapid typing (10-80ms)
-            delay = random.lognormvariate(-3.5, 0.7)
-            delay = max(0.005, min(delay, 0.15))
+            # Intra-burst: near-zero delay (TCP controls real pacing)
+            delay = random.uniform(0.001, 0.01)
             self._last_cover_time = now + delay
 
     def _cover_packet_size(self) -> int:
-        """Sample cover packet size from the padding policy's pool if available, else quantized gaussian."""
-        # If using TrafficMimicryPolicy, sample from its pool for consistent size distribution
+        """Sample cover packet size based on role to simulate real HTTPS asymmetry.
+
+        Real HTTPS pattern: client sends small requests (60-200B),
+        server sends large responses (1200-1400B TCP segments).
+        Direction ratio should be ~0.25 (client:server bytes).
+        """
+        # Use the padding policy's pool for consistent size distribution
         policy = self.codec.padding_policy
         if hasattr(policy, '_pool') and policy._pool:
             r = random.random()
@@ -359,17 +343,26 @@ class HideWGProxy:
                 if r <= cum:
                     return size
             return policy._pool[-1]
-        # Fallback: quantized gaussian clusters
-        r = random.random()
-        if r < 0.20:
-            s = int(random.gauss(58, 12))
-        elif r < 0.55:
-            s = int(random.gauss(200, 40))
-        elif r < 0.80:
-            s = int(random.gauss(500, 80))
+
+        # Fallback: role-based sizing
+        if self.is_server:
+            # Server: mostly large packets (simulate HTTPS responses)
+            r = random.random()
+            if r < 0.75:
+                s = int(random.gauss(1400, 30))
+            elif r < 0.85:
+                s = int(random.gauss(500, 100))
+            else:
+                s = int(random.gauss(60, 8))
         else:
-            s = int(random.gauss(1200, 100))
-        # Quantize to 4-byte boundary
+            # Client: mostly small packets (simulate HTTPS requests)
+            r = random.random()
+            if r < 0.70:
+                s = int(random.gauss(60, 8))
+            elif r < 0.85:
+                s = int(random.gauss(200, 60))
+            else:
+                s = int(random.gauss(500, 100))
         s = (max(40, min(s, 1400)) // 4) * 4
         return s
 
@@ -377,8 +370,8 @@ class HideWGProxy:
         """Send a fake response when receiving a cover dummy, making cover traffic bidirectional."""
         if not self.cover_bidirectional or not self.cover_enabled:
             return
-        # Response delay: mimics server processing time (5-50ms)
-        time.sleep(random.lognormvariate(-4.0, 0.6) + 0.005)
+        # Response delay: minimal (TCP controls real timing)
+        time.sleep(random.uniform(0.001, 0.01))
         size = self._cover_packet_size()
         dummy = hashlib.shake_256(self._cover_key + os.urandom(12)).digest(size)
         outer_transport.send(dummy, peer_addr)

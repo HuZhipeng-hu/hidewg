@@ -461,11 +461,13 @@ class TrafficMimicryPolicy(PaddingPolicy):
     """
 
     # Real traffic clusters: (mean, std, weight)
+    # 来源: 真实 HTTPS 抓包统计 (tcp port 443, 34k packets)
+    #   1440B: 71.8%, 54B: 9.2%, 60B: 4.1%, 66B: 4.3%, 90B: 1.3%
     CLUSTERS = [
-        (58, 12, 0.20),    # ACK/keepalive (~20%)
-        (200, 40, 0.35),   # chat/JSON messages (~35%)
-        (500, 80, 0.25),   # medium data (~25%)
-        (1200, 100, 0.20), # large frames (~20%)
+        (60, 8, 0.15),      # TCP ACK/keepalive (~15%)
+        (200, 60, 0.05),    # small data frames (~5%)
+        (500, 100, 0.05),   # medium data (~5%)
+        (1400, 30, 0.75),   # TCP MSS segments (~75%, 真实HTTPS主导包长)
     ]
 
     def __init__(self, min_size: int = 40, max_size: int = 1400,
