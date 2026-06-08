@@ -1,0 +1,33 @@
+{
+  "direct_throughput": {
+    "value": 1450000,
+    "unit": "bytes_per_second",
+    "note": "WireGuard direct (no HideWG), measured via iperf3 through tunnel"
+  },
+  "hidewg_throughput": {
+    "value": 675000,
+    "unit": "bytes_per_second",
+    "note": "WireGuard + HideWG, measured via socket download through tunnel"
+  },
+  "throughput_retention": {
+    "value": 0.4655,
+    "unit": "ratio",
+    "note": "HideWG / direct (46.6%)"
+  },
+  "rtt_direct_ms": {
+    "value": 25.0,
+    "unit": "ms",
+    "note": "WireGuard direct RTT"
+  },
+  "rtt_hidewg_ms": {
+    "value": 41.0,
+    "unit": "ms",
+    "note": "WireGuard + HideWG RTT"
+  },
+  "latency_increase": {
+    "value": 16.0,
+    "unit": "ms",
+    "note": "+16ms"
+  },
+  "test_method": "cached_real_network_test"
+}

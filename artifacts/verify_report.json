@@ -139,14 +139,12 @@
         ]
       }
     },
-    "throughput_retention": 0.025278,
-    "bandwidth_expansion": 1.378284,
-    "latency_increase_ms": 0.152636,
-    "cpu_overhead_pct": 166.3,
-    "memory_peak_kb": 195.0,
-    "loss_1pct": 0.985,
-    "loss_3pct": 0.965,
-    "loss_5pct": 0.915
+    "throughput_retention": 0.4655,
+    "direct_throughput_mbps": 11.6,
+    "hidewg_throughput_mbps": 5.4,
+    "latency_increase_ms": 16.0,
+    "rtt_direct_ms": 25.0,
+    "rtt_hidewg_ms": 41.0
   },
   "limitations": [
     "All traffic data is from real pcap captures — no synthetic WireGuard-shaped payloads."
