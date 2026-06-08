@@ -8,8 +8,8 @@ inner_listen_port: 51830
 
 outer_listen_host: 0.0.0.0
 outer_listen_port: 55820
+# 通过 nginx:443 接入 (WSS → nginx TLS 终止 → WS → HideWG:8443)
 peer_host: 1.95.65.51
-# 通过 nginx:443 接入 (WSS → nginx TLS 终止 → WS → HideWG)
 peer_port: 443
 ws_path: /ws
 

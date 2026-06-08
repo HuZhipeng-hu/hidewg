@@ -7,7 +7,8 @@ inner_listen_host: 127.0.0.1
 inner_listen_port: 51831
 
 outer_listen_host: 0.0.0.0
-outer_listen_port: 55821
+# HideWG 监听端口: nginx 反代时用 8443, 直连时用 55821
+outer_listen_port: 8443
 # 客户端在 NAT 后面，启动后会自动学习客户端的真实地址
 peer_host: 127.0.0.1
 peer_port: 55820
@@ -16,15 +17,25 @@ wireguard_host: 127.0.0.1
 wireguard_port: 51820
 
 max_fragment_payload: 1300
+# min_fragment_payload: 434   # 默认 max/3，随机碎片化下限
 # 填充桶覆盖 HTTPS 典型包长范围，包含 1400B 大包
 padding_buckets: [60, 90, 128, 256, 512, 768, 1024, 1280, 1400]
 padding_jitter_chance: 0.20
 timing_jitter_ms: 0.5
 
-# 反深度学习防御
-# 填充模式: "mimicry" (流量模拟，推荐) / "adaptive" (桶+自适应)
+# ===== 反检测填充策略 =====
+# 填充模式: "mimicry" (流量模拟) / "adaptive" (桶填充+自适应) / "continuous" (连续分布)
+# mimicry: 模拟真实 VoIP/聊天流量包长分布，~50-80 种唯一包长 (推荐)
+# adaptive: 高斯抖动打破桶对齐，但产生 ~385 种包长
+# continuous: 连续分布，对 RF 防御强但包长种类多
 padding_mode: mimicry
-mimicry_jitter_std: 8.0
+
+# mimicry 模式参数
+mimicry_jitter_std: 8.0     # 聚类中心抖动 σ
+
+# 连续填充分布 (padding_mode=continuous 时使用)
+# padding_distribution: multimodal  # multimodal / triangular / uniform / beta
+# padding_reshape_interval: 64
 
 # ===== AmneziaWG 借鉴的反检测增强 =====
 
@@ -48,7 +59,6 @@ cover_bidirectional: true
 # ===== 传输层 =====
 # WebSocket-over-TLS + nginx 反代：Wireshark 看到标准 HTTPS 流量
 # 客户端 → WSS (TLS 1.3) → nginx:443 → WS (明文) → HideWG:8443
-outer_listen_port: 8443
 tls_certfile: .hidewg/tls/server.pem
 tls_keyfile: .hidewg/tls/server-key.pem
 # nginx 已做 TLS 终止，HideWG 收到的是明文 HTTP/WS
