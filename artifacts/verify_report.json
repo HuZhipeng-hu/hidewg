@@ -139,11 +139,11 @@
         ]
       }
     },
-    "throughput_retention": 0.045,
+    "throughput_retention": 0.025278,
     "bandwidth_expansion": 1.378284,
-    "latency_increase_ms": 0.092291,
-    "cpu_overhead_pct": 269.472,
-    "memory_peak_kb": 31.9,
+    "latency_increase_ms": 0.152636,
+    "cpu_overhead_pct": 166.3,
+    "memory_peak_kb": 195.0,
     "loss_1pct": 0.985,
     "loss_3pct": 0.965,
     "loss_5pct": 0.915

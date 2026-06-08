@@ -248,6 +248,9 @@ class ContinuousPaddingPolicy(PaddingPolicy):
 
 
 class HideWGCodec:
+    # Pre-allocated random buffer size (avoids per-packet os.urandom calls)
+    _RAND_BUF_SIZE = 65536
+
     def __init__(
         self,
         shared_secret: str | bytes,
@@ -267,6 +270,9 @@ class HideWGCodec:
         self.max_fragment_payload = int(max_fragment_payload)
         if self.max_fragment_payload <= 0 or self.max_fragment_payload > 65535:
             raise ValueError("max_fragment_payload must be in 1..65535")
+        # Random byte buffer: pre-generate and slice to avoid per-packet syscalls
+        self._rand_buf = os.urandom(self._RAND_BUF_SIZE)
+        self._rand_pos = self._RAND_BUF_SIZE
         if min_fragment_payload > 0:
             self.min_fragment_payload = min(int(min_fragment_payload), self.max_fragment_payload)
         else:
@@ -279,23 +285,19 @@ class HideWGCodec:
         self._header_size = HEADER.size
 
     def _random_split(self, payload: bytes) -> list[bytes]:
-        """Split payload into randomly-sized fragments to break equal-length patterns.
-
-        AmneziaWG-inspired: random fragment sizes defeat CNN classifiers that
-        learn from consecutive equal-length packet patterns (lag autocorrelation).
-        The receiver uses per-fragment payload_len from the header, so variable
-        sizes require no protocol changes.
-        """
+        """Split payload into randomly-sized fragments to break equal-length patterns."""
         if len(payload) <= self.max_fragment_payload:
-            return [bytes(payload)]
+            return [payload]  # No copy needed for small packets
         chunks = []
-        remaining = payload
-        while len(remaining) > self.max_fragment_payload:
+        offset = 0
+        remaining = len(payload)
+        while remaining > self.max_fragment_payload:
             size = random.randint(self.min_fragment_payload, self.max_fragment_payload)
-            chunks.append(bytes(remaining[:size]))
-            remaining = remaining[size:]
-        if remaining:
-            chunks.append(bytes(remaining))
+            chunks.append(payload[offset:offset + size])
+            offset += size
+            remaining -= size
+        if remaining > 0:
+            chunks.append(payload[offset:])
         return chunks
 
     def encode_packet(self, payload: bytes) -> list[EncodedRecord]:
@@ -308,7 +310,7 @@ class HideWGCodec:
             sequence = self._next_sequence()
             padded_len = self.padding_policy.padded_length(len(chunk))
             padding_len = padded_len - len(chunk)
-            body_plain = chunk + os.urandom(padding_len)
+            body_plain = chunk + self._fast_urandom(padding_len)
             flags = FLAG_FRAGMENTED if len(chunks) > 1 else 0
             header_plain = HEADER.pack(
                 VERSION,
@@ -393,7 +395,18 @@ class HideWGCodec:
         return self._message_id
 
     def _nonce(self) -> bytes:
-        return os.urandom(NONCE_LEN)
+        return self._fast_urandom(NONCE_LEN)
+
+    def _fast_urandom(self, n: int) -> bytes:
+        """Fast random bytes: slice from pre-generated buffer, refill when exhausted."""
+        if n <= 0:
+            return b""
+        if self._rand_pos + n > self._RAND_BUF_SIZE:
+            self._rand_buf = os.urandom(self._RAND_BUF_SIZE)
+            self._rand_pos = 0
+        result = self._rand_buf[self._rand_pos:self._rand_pos + n]
+        self._rand_pos += n
+        return result
 
 
 class Reassembler:

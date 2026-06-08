@@ -1,20 +1,20 @@
 {
   "data_source": "real_capture",
-  "hidewg_packets": 1923,
+  "hidewg_packets": 1558,
   "wireguard_packets": 1230,
-  "normal_packets": 500,
+  "normal_packets": 1300,
   "window_size": 50,
-  "train_samples": 247,
-  "test_samples": 106,
+  "train_samples": 277,
+  "test_samples": 119,
   "results": {
-    "NearestCentroid": 1.0,
-    "RandomForest-50": 1.0,
-    "MLP-256": 1.0,
-    "CNN-1D": 0.8396
+    "NearestCentroid": 0.7143,
+    "RandomForest-50": 0.6975,
+    "MLP-256": 0.7479,
+    "CNN-1D": 0.6891
   },
   "class_names": [
     "HideWG (real)",
     "WireGuard (real)",
-    "Normal-TLS (syn)"
+    "Normal-HTTPS (real)"
   ]
 }

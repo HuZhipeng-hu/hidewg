@@ -430,6 +430,18 @@ class Conv1D:
 # 评估流程
 # ──────────────────────────────────────────────
 
+def _detect_server_port(pkts: list[dict]) -> int:
+    """自动检测服务端口: 选择出现频率最高的目的端口."""
+    from collections import Counter
+    port_counts = Counter()
+    for p in pkts:
+        if p["proto"] == "tcp" and p["dst_port"] > 0:
+            port_counts[p["dst_port"]] += 1
+    if not port_counts:
+        return 443
+    return port_counts.most_common(1)[0][0]
+
+
 SEED = 42
 SEQ_LEN = 50
 STRIDE = 10
@@ -470,9 +482,11 @@ def main():
     # ── 提取双向流量 ──
     print("\n[2/6] 提取流量序列...")
 
-    # HideWG: client→server + server→client (port 443)
-    hwg_l1, hwg_d1, hwg_i1 = extract_flow(hwg_pkts, "client_to_server", 443)
-    hwg_l2, hwg_d2, hwg_i2 = extract_flow(hwg_pkts, "server_to_client", 443)
+    # HideWG: client→server + server→client (自动检测服务端口)
+    hwg_server_port = _detect_server_port(hwg_pkts)
+    print(f"  HideWG 服务端口: {hwg_server_port}")
+    hwg_l1, hwg_d1, hwg_i1 = extract_flow(hwg_pkts, "client_to_server", hwg_server_port)
+    hwg_l2, hwg_d2, hwg_i2 = extract_flow(hwg_pkts, "server_to_client", hwg_server_port)
     hwg_l = np.concatenate([hwg_l1, hwg_l2]) if len(hwg_l1) > 0 else hwg_l2
     hwg_d = np.concatenate([hwg_d1, hwg_d2]) if len(hwg_d1) > 0 else hwg_d2
     hwg_i = np.concatenate([hwg_i1, hwg_i2]) if len(hwg_i1) > 0 else hwg_i2

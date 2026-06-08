@@ -268,6 +268,16 @@ class WSTransport:
         except (OSError, AttributeError):
             pass
 
+    def send_batch(self, payloads: list[bytes]) -> None:
+        """Send multiple WS frames in a single sendall() call to reduce syscall overhead."""
+        if not self._upgraded or not payloads:
+            return
+        buf = b"".join(ws_encode_frame(WS_OPCODE_BINARY, d, masked=True) for d in payloads)
+        try:
+            self._tls._conn.sendall(buf)
+        except (OSError, AttributeError):
+            pass
+
     def fileno(self) -> int:
         return self._tls.fileno()
 
@@ -612,6 +622,16 @@ class _ServerWSHandler:
         frame = ws_encode_frame(WS_OPCODE_BINARY, data, masked=False)
         try:
             self._conn.sendall(frame)
+        except OSError:
+            pass
+
+    def send_batch(self, payloads: list[bytes]) -> None:
+        """Send multiple WS frames in a single sendall() call."""
+        if not payloads:
+            return
+        buf = b"".join(ws_encode_frame(WS_OPCODE_BINARY, d, masked=False) for d in payloads)
+        try:
+            self._conn.sendall(buf)
         except OSError:
             pass
 

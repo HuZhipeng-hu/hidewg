@@ -260,14 +260,27 @@ class HideWGProxy:
             outer_transport.send(junk, peer)
             self.stats.outer_packets_sent += 1
             self.stats.outer_bytes_sent += len(junk)
-        for record in records:
+        # Batch encode all frames and send in one syscall
+        if len(records) == 1:
             self._apply_timing()
-            # Wrap with noise prefix to break discrete bucket pattern (AmneziaWG S4)
-            wrapped = self.junk_injector.wrap_with_noise(record.data)
+            wrapped = self.junk_injector.wrap_with_noise(records[0].data)
             outer_transport.send(wrapped, peer)
             self.stats.outer_packets_sent += 1
             self.stats.outer_bytes_sent += len(wrapped)
-            self.stats.padding_bytes += record.padding_bytes
+            self.stats.padding_bytes += records[0].padding_bytes
+        else:
+            # Multi-fragment: batch send to reduce syscalls
+            self._apply_timing()
+            wrapped_list = [self.junk_injector.wrap_with_noise(r.data) for r in records]
+            if hasattr(outer_transport, 'send_batch'):
+                outer_transport.send_batch(wrapped_list)
+            else:
+                for w in wrapped_list:
+                    outer_transport.send(w, peer)
+            for r, w in zip(records, wrapped_list):
+                self.stats.outer_packets_sent += 1
+                self.stats.outer_bytes_sent += len(w)
+                self.stats.padding_bytes += r.padding_bytes
 
     def _apply_timing(self) -> None:
         """Apply minimal timing jitter.
