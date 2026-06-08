@@ -1,11 +1,11 @@
 metric,value,unit
-baseline_throughput,75031430.45,bytes_per_second
-hidewg_throughput,3932732.35,bytes_per_second
-throughput_retention,0.052414,ratio
-latency_increase,0.089874,ms_per_packet
+baseline_throughput,85771773.34,bytes_per_second
+hidewg_throughput,3859702.07,bytes_per_second
+throughput_retention,0.045,ratio
+latency_increase,0.092291,ms_per_packet
 bandwidth_expansion,1.378284,ratio
 bandwidth_expansion_vs_baseline,1.36366,ratio
-cpu_overhead,274.571,percent_of_one_core
+cpu_overhead,269.472,percent_of_one_core
 memory_peak,32683,bytes
 completed_packets,240,packets
 loss_1pct_completion,0.985,ratio
