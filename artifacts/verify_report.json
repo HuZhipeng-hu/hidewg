@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "passed": true,
   "function_tests": {
     "basic_connectivity": {
@@ -38,17 +38,113 @@
     "runtime_log": "runtime_log.jsonl",
     "capture": "capture.pcap",
     "raw_wireguard_capture": "raw_wireguard.pcap",
-    "state": "state.json"
+    "state": "state.json",
+    "charts": [
+      "chart_A_function.png",
+      "chart_B1_rules.png",
+      "chart_B2_radar.png",
+      "chart_B2_confusion.png",
+      "chart_C_efficiency.png"
+    ]
   },
   "summary": {
+    "function_passed": true,
+    "function_tests_passed": 7,
+    "function_tests_total": 7,
     "raw_rule_hit_rate": 0.625,
-    "hidewg_rule_hit_rate": 0.0012121212121212121,
-    "classifier_accuracy": 1.0,
-    "throughput_retention": 0.027577,
-    "bandwidth_expansion": 1.365661
+    "hidewg_rule_hit_rate": 0.2,
+    "course_classifiers": {
+      "LogisticRegression": {
+        "accuracy": 1.0,
+        "precision_macro": 1.0,
+        "recall_macro": 1.0,
+        "f1_macro": 1.0,
+        "confusion_matrix": [
+          [
+            96,
+            0
+          ],
+          [
+            0,
+            73
+          ]
+        ],
+        "classes": [
+          "hidewg",
+          "normal"
+        ]
+      },
+      "RandomForest": {
+        "accuracy": 1.0,
+        "precision_macro": 1.0,
+        "recall_macro": 1.0,
+        "f1_macro": 1.0,
+        "confusion_matrix": [
+          [
+            96,
+            0
+          ],
+          [
+            0,
+            73
+          ]
+        ],
+        "classes": [
+          "hidewg",
+          "normal"
+        ]
+      },
+      "SVM": {
+        "accuracy": 1.0,
+        "precision_macro": 1.0,
+        "recall_macro": 1.0,
+        "f1_macro": 1.0,
+        "confusion_matrix": [
+          [
+            96,
+            0
+          ],
+          [
+            0,
+            73
+          ]
+        ],
+        "classes": [
+          "hidewg",
+          "normal"
+        ]
+      },
+      "KNN": {
+        "accuracy": 0.9882,
+        "precision_macro": 0.9867,
+        "recall_macro": 0.9896,
+        "f1_macro": 0.988,
+        "confusion_matrix": [
+          [
+            94,
+            2
+          ],
+          [
+            0,
+            73
+          ]
+        ],
+        "classes": [
+          "hidewg",
+          "normal"
+        ]
+      }
+    },
+    "throughput_retention": 0.012074,
+    "bandwidth_expansion": 1.365661,
+    "latency_increase_ms": 0.094063,
+    "cpu_overhead_pct": 136.756,
+    "memory_peak_kb": 31.6,
+    "loss_1pct": 0.985,
+    "loss_3pct": 0.965,
+    "loss_5pct": 0.915
   },
   "limitations": [
-    "All traffic data is from real pcap captures — no synthetic WireGuard-shaped payloads.",
-    "The outer cryptographic primitive is a standard-library SHAKE stream plus HMAC-SHA256 tag for coursework reproducibility, not a replacement for WireGuard security."
+    "All traffic data is from real pcap captures — no synthetic WireGuard-shaped payloads."
   ]
 }

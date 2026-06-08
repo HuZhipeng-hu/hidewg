@@ -12,60 +12,36 @@
       "packet_count": 240
     },
     "hidewg": {
-      "overall_rule_hit_rate": 0.0012121212121212121,
+      "overall_rule_hit_rate": 0.2,
       "per_rule": {
-        "R1_message_type_first_byte": 0.006060606060606061,
-        "R2_reserved_zero_bytes": 0.0,
+        "R1_message_type_first_byte": 0.0,
+        "R2_reserved_zero_bytes": 1.0,
         "R3_typical_wireguard_lengths": 0.0,
         "R4_handshake_direction_timing": 0,
         "R5_fixed_keepalive_pattern": 0
       },
-      "packet_count": 330
+      "packet_count": 1558
     },
-    "rule_hit_reduction": 0.6237878787878788
+    "rule_hit_reduction": 0.425
   },
   "classifier_detection": {
     "model": "nearest_centroid_std_scaled",
-    "train_samples": 921,
-    "test_samples": 395,
+    "train_samples": 78,
+    "test_samples": 34,
     "accuracy": 1.0,
     "precision_macro": 1.0,
     "recall_macro": 1.0,
     "f1_macro": 1.0,
-    "auc_macro": 1.0,
+    "auc_macro": 0.0,
     "labels": [
-      "control",
-      "hidewg",
       "raw_wireguard"
     ],
     "confusion_matrix": {
-      "control": {
-        "control": 334,
-        "hidewg": 0,
-        "raw_wireguard": 0
-      },
-      "hidewg": {
-        "control": 0,
-        "hidewg": 30,
-        "raw_wireguard": 0
-      },
       "raw_wireguard": {
-        "control": 0,
-        "hidewg": 0,
-        "raw_wireguard": 31
+        "raw_wireguard": 34
       }
     },
     "per_label": {
-      "control": {
-        "precision": 1.0,
-        "recall": 1.0,
-        "f1": 1.0
-      },
-      "hidewg": {
-        "precision": 1.0,
-        "recall": 1.0,
-        "f1": 1.0
-      },
       "raw_wireguard": {
         "precision": 1.0,
         "recall": 1.0,
@@ -88,7 +64,7 @@
   },
   "data_source": {
     "raw_wireguard_pcap": "artifacts\\raw_wireguard.pcap",
-    "hidewg_pcap": "artifacts\\capture.pcap",
+    "hidewg_pcap": "artifacts\\real_hidewg.pcap",
     "note": "All traffic data from real pcap captures. Control from artifacts/real_normal.pcap."
   }
 }

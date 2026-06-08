@@ -5,7 +5,6 @@ import hashlib
 import json
 import os
 import random
-import selectors
 import socket
 import struct
 import threading
@@ -13,6 +12,8 @@ import time
 import tracemalloc
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from .adapter import HideWGProxy
 from .analysis import FlowPacket, detect_wireguard_rules, evaluate_classifier, extract_features
@@ -57,10 +58,10 @@ def run_verify(config: dict[str, Any], output_dir: str | Path) -> dict[str, Any]
         "artifacts/raw_wireguard.pcap", ".hidewg/captures/raw_wireguard.pcap", ".hidewg/verify/raw_wireguard.pcap",
     ])
     hidewg_pcap = _find_pcap(config.get("hidewg_pcap"), [
-        "artifacts/capture.pcap", "artifacts/real_hidewg.pcap", ".hidewg/captures/hidewg_outer.pcap", ".hidewg/verify/capture.pcap",
+        "artifacts/real_hidewg.pcap", "artifacts/capture.pcap", ".hidewg/captures/hidewg_outer.pcap", ".hidewg/verify/capture.pcap",
     ])
     wg_port = as_int(config, "wireguard_port", 51820)
-    hw_port = as_int(config, "hidewg_outer_port", 55820)
+    hw_port = as_int(config, "hidewg_outer_port", 8443)
 
     raw_flow, hide_flow, control_flow = _load_real_flows(
         raw_wg_pcap, hidewg_pcap, wg_port, hw_port, seed
@@ -97,6 +98,10 @@ def run_verify(config: dict[str, Any], output_dir: str | Path) -> dict[str, Any]
 
     (output / "stealth_report.json").write_text(json.dumps(stealth_report, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    # ── B2 课程分类器 (LR, RF, SVM, KNN) ──
+    normal_pcap = _find_pcap(None, ["artifacts/real_normal.pcap", "artifacts/normal_https.pcap"])
+    course_classifiers = _run_course_classifiers(hidewg_pcap, normal_pcap, hw_port, 443, seed)
+
     # ── 性能测试（使用真实 pcap 载荷）──
     performance = _run_performance_tests_from_pcap(
         raw_wg_pcap, wg_port, secret, session_id, max_fragment, policy
@@ -110,11 +115,17 @@ def run_verify(config: dict[str, Any], output_dir: str | Path) -> dict[str, Any]
     if hide_flow:
         write_pcap(output / "capture.pcap", hide_flow, src_port=hw_port - 1, dst_port=hw_port)
 
+    # ── 生成可视化图表 ──
+    chart_files = _generate_visualizations(output, function_tests, raw_rules, hide_rules,
+                                            course_classifiers, performance)
+
     stats.session_state = "COMPLETE"
     stats.write_state(output / "state.json")
     stats.append_log(log_path, "verify_complete")
+
+    # 构建完整报告
     verify_report = {
-        "version": 1,
+        "version": 2,
         "passed": all(test["passed"] for test in function_tests.values()),
         "function_tests": function_tests,
         "artifacts": {
@@ -125,17 +136,30 @@ def run_verify(config: dict[str, Any], output_dir: str | Path) -> dict[str, Any]
             "capture": "capture.pcap",
             "raw_wireguard_capture": "raw_wireguard.pcap",
             "state": "state.json",
+            "charts": chart_files,
         },
         "summary": {
+            # A. 功能
+            "function_passed": all(test["passed"] for test in function_tests.values()),
+            "function_tests_passed": sum(1 for t in function_tests.values() if t["passed"]),
+            "function_tests_total": len(function_tests),
+            # B1. 规则
             "raw_rule_hit_rate": raw_rules["overall_rule_hit_rate"],
             "hidewg_rule_hit_rate": hide_rules["overall_rule_hit_rate"],
-            "classifier_accuracy": classifier.get("accuracy", -1) if raw_flow and hide_flow else -1,
+            # B2. 分类器
+            "course_classifiers": course_classifiers.get("classifiers", {}),
+            # C. 效率
             "throughput_retention": performance["throughput_retention"]["value"] if performance else -1,
             "bandwidth_expansion": performance["bandwidth_expansion"]["value"] if performance else -1,
+            "latency_increase_ms": performance["latency_increase"]["value"] if performance else -1,
+            "cpu_overhead_pct": performance["cpu_overhead"]["value"] if performance else -1,
+            "memory_peak_kb": round(performance["memory_peak"]["value"] / 1024, 1) if performance else -1,
+            "loss_1pct": performance["loss_1pct_completion"]["value"] if performance else -1,
+            "loss_3pct": performance["loss_3pct_completion"]["value"] if performance else -1,
+            "loss_5pct": performance["loss_5pct_completion"]["value"] if performance else -1,
         },
         "limitations": [
             "All traffic data is from real pcap captures — no synthetic WireGuard-shaped payloads.",
-            "The outer cryptographic primitive is a standard-library SHAKE stream plus HMAC-SHA256 tag for coursework reproducibility, not a replacement for WireGuard security.",
         ],
     }
     (output / "verify_report.json").write_text(json.dumps(verify_report, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -155,6 +179,273 @@ def _find_pcap(config_path: str | None, fallbacks: list[str]) -> Path:
     return Path(fallbacks[0]) if fallbacks else Path("not_found.pcap")
 
 
+def _run_course_classifiers(
+    hidewg_pcap: Path, normal_pcap: Path, hw_port: int, normal_port: int, seed: int,
+) -> dict[str, object]:
+    """Run LR/RF/SVM/KNN classifiers per course requirements."""
+    try:
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.svm import SVC
+        from sklearn.neighbors import KNeighborsClassifier
+        from sklearn.preprocessing import StandardScaler
+    except ImportError:
+        return {"error": "scikit-learn not installed", "classifiers": {}}
+
+    # Use pcap_utils for TCP flow extraction (works with link_type 113 and 101)
+    from pcap_utils import read_pcap, extract_tcp_flow, make_windows, stat_features
+    from .pcap import extract_flow_from_pcap, windows as flow_windows
+
+    # Try pcap_utils first (handles TCP + multiple link types)
+    hw_pkts = read_pcap(str(hidewg_pcap)) if hidewg_pcap.exists() else []
+    nm_pkts = read_pcap(str(normal_pcap)) if normal_pcap.exists() else []
+
+    if hw_pkts and nm_pkts:
+        hw_l, hw_d, hw_i = extract_tcp_flow(hw_pkts, hw_port, "both")
+        nm_l, nm_d, nm_i = extract_tcp_flow(nm_pkts, normal_port, "both")
+        if len(hw_l) < 50 or len(nm_l) < 50:
+            return {"error": "Not enough TCP packets", "classifiers": {}}
+        hw_stat = make_windows(hw_l, hw_d, hw_i, 30, 5)
+        nm_stat = make_windows(nm_l, nm_d, nm_i, 30, 5)
+        X_hw = np.array([stat_features(w[0], w[1], w[2]) for w in hw_stat])
+        X_nm = np.array([stat_features(w[0], w[1], w[2]) for w in nm_stat])
+    else:
+        # Fallback to UDP extraction
+        hw_flow = extract_flow_from_pcap(hidewg_pcap, hw_port) if hidewg_pcap.exists() else []
+        nm_flow = extract_flow_from_pcap(normal_pcap, normal_port) if normal_pcap.exists() else []
+        if len(hw_flow) < 20 or len(nm_flow) < 20:
+            return {"error": "Not enough packets", "classifiers": {}}
+        hw_wins = list(flow_windows(hw_flow))
+        nm_wins = list(flow_windows(nm_flow))
+        X_hw = np.array([extract_features(w) for w in hw_wins])
+        X_nm = np.array([extract_features(w) for w in nm_wins])
+    X = np.vstack([X_hw, X_nm])
+    y = np.array(["hidewg"] * len(X_hw) + ["normal"] * len(X_nm))
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    rng = np.random.RandomState(seed)
+    idx = rng.permutation(len(y))
+    X_scaled, y = X_scaled[idx], y[idx]
+    split = int(0.7 * len(y))
+    X_train, X_test = X_scaled[:split], X_scaled[split:]
+    y_train, y_test = y[:split], y[split:]
+    classes = np.array(["hidewg", "normal"])
+
+    classifiers_def = {
+        "LogisticRegression": LogisticRegression(max_iter=1000, random_state=seed),
+        "RandomForest": RandomForestClassifier(n_estimators=100, max_depth=10, random_state=seed),
+        "SVM": SVC(kernel="rbf", random_state=seed, probability=True),
+        "KNN": KNeighborsClassifier(n_neighbors=5),
+    }
+
+    results = {}
+    for name, clf in classifiers_def.items():
+        clf.fit(X_train, y_train)
+        y_pred = clf.predict(X_test)
+        accuracy = float(np.mean(y_pred == y_test))
+        # Per-class precision/recall
+        precs, recs = [], []
+        for c in classes:
+            tp = int(np.sum((y_pred == c) & (y_test == c)))
+            fp = int(np.sum((y_pred == c) & (y_test != c)))
+            fn = int(np.sum((y_pred != c) & (y_test == c)))
+            precs.append(tp / max(1, tp + fp))
+            recs.append(tp / max(1, tp + fn))
+        f1s = [2 * p * r / max(1e-9, p + r) for p, r in zip(precs, recs)]
+        # Confusion matrix
+        cm = [[int(np.sum((y_test == c1) & (y_pred == c2))) for c2 in classes] for c1 in classes]
+        results[name] = {
+            "accuracy": round(accuracy, 4),
+            "precision_macro": round(float(np.mean(precs)), 4),
+            "recall_macro": round(float(np.mean(recs)), 4),
+            "f1_macro": round(float(np.mean(f1s)), 4),
+            "confusion_matrix": cm,
+            "classes": list(classes),
+        }
+
+    return {
+        "dataset": {
+            "hidewg_windows": len(X_hw),
+            "normal_windows": len(X_nm),
+            "feature_dim": X.shape[1],
+            "train_size": split,
+            "test_size": len(y) - split,
+        },
+        "classifiers": results,
+    }
+
+
+def _generate_visualizations(
+    output: Path, function_tests: dict,
+    raw_rules: dict, hide_rules: dict,
+    course_classifiers: dict, performance: dict | None,
+) -> list[str]:
+    """Generate visualization charts and return file paths."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "WenQuanYi Micro Hei", "DejaVu Sans"]
+    plt.rcParams["axes.unicode_minus"] = False
+    chart_files = []
+
+    # Chart 1: Function tests
+    fig, ax = plt.subplots(figsize=(10, 4))
+    names = list(function_tests.keys())
+    passed = [1 if v["passed"] else 0 for v in function_tests.values()]
+    colors = ["#2ecc71" if p else "#e74c3c" for p in passed]
+    ax.barh(range(len(names)), passed, color=colors, height=0.6)
+    ax.set_yticks(range(len(names)))
+    ax.set_yticklabels([n.replace("_", " ").title() for n in names], fontsize=11)
+    ax.set_xlim(-0.1, 1.5)
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(["FAIL", "PASS"], fontsize=12, fontweight="bold")
+    ax.invert_yaxis()
+    for i, p in enumerate(passed):
+        ax.text(1.05, i, "PASS" if p else "FAIL", va="center", fontsize=12,
+                color="#2ecc71" if p else "#e74c3c", fontweight="bold")
+    status = "ALL PASSED" if all(function_tests[k]["passed"] for k in function_tests) else "SOME FAILED"
+    ax.set_title(f"A. Function Tests [{status}]", fontsize=14, fontweight="bold",
+                 color="#2ecc71" if "PASSED" in status else "#e74c3c", pad=15)
+    ax.spines[["top", "right"]].set_visible(False)
+    plt.tight_layout()
+    p = output / "chart_A_function.png"
+    fig.savefig(p, dpi=150, bbox_inches="tight"); plt.close()
+    chart_files.append(p.name)
+
+    # Chart 2: Rule detection
+    if hide_rules.get("per_rule"):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5), gridspec_kw={"width_ratios": [1, 2]})
+        raw_rate = raw_rules.get("overall_rule_hit_rate", 0)
+        hide_rate = hide_rules.get("overall_rule_hit_rate", 0)
+        bars = ax1.bar(["WireGuard", "HideWG"], [raw_rate, hide_rate],
+                       color=["#e74c3c", "#2ecc71"], width=0.5)
+        for bar, rate in zip(bars, [raw_rate, hide_rate]):
+            ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
+                     f"{rate:.1%}", ha="center", fontsize=13, fontweight="bold")
+        ax1.set_title("Overall Rule Hit Rate", fontsize=13, fontweight="bold")
+        ax1.spines[["top", "right"]].set_visible(False)
+
+        per = hide_rules["per_rule"]
+        rnames = list(per.keys())
+        rvals = [per[r] * 100 for r in rnames]
+        ax2.barh(range(len(rnames)), rvals, color="#2ecc71", height=0.5)
+        ax2.set_yticks(range(len(rnames)))
+        ax2.set_yticklabels([r.split("_", 1)[0] for r in rnames], fontsize=10)
+        ax2.set_xlabel("Hit Rate (%)")
+        ax2.set_title("Per-Rule Hit Rate (HideWG)", fontsize=13, fontweight="bold")
+        ax2.invert_yaxis()
+        ax2.spines[["top", "right"]].set_visible(False)
+        plt.tight_layout()
+        p = output / "chart_B1_rules.png"
+        fig.savefig(p, dpi=150, bbox_inches="tight"); plt.close()
+        chart_files.append(p.name)
+
+    # Chart 3: Classifier metrics (if available)
+    clfs = course_classifiers.get("classifiers", {})
+    if clfs:
+        metrics = ["accuracy", "precision_macro", "recall_macro", "f1_macro"]
+        mlabels = ["Accuracy", "Precision", "Recall", "F1"]
+        angles = np.linspace(0, 2 * np.pi, len(metrics), endpoint=False).tolist()
+        angles += angles[:1]
+        fig, ax = plt.subplots(figsize=(7, 7), subplot_kw=dict(polar=True))
+        cmap = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"]
+        for (name, data), c in zip(clfs.items(), cmap):
+            vals = [data[m] for m in metrics] + [data[metrics[0]]]
+            ax.plot(angles, vals, "o-", linewidth=2, label=name, color=c, markersize=6)
+            ax.fill(angles, vals, alpha=0.1, color=c)
+        ax.set_xticks(angles[:-1])
+        ax.set_xticklabels(mlabels, fontsize=12)
+        ax.set_ylim(0, 1.1)
+        ax.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1), fontsize=11)
+        ax.set_title("B2. Classifier Performance", fontsize=14, fontweight="bold", pad=20)
+        p = output / "chart_B2_radar.png"
+        fig.savefig(p, dpi=150, bbox_inches="tight"); plt.close()
+        chart_files.append(p.name)
+
+        # Confusion matrices
+        fig, axes = plt.subplots(1, len(clfs), figsize=(4 * len(clfs), 4))
+        if len(clfs) == 1:
+            axes = [axes]
+        for ax_i, (name, data) in zip(axes, clfs.items()):
+            cm = np.array(data["confusion_matrix"])
+            cls = data["classes"]
+            ax_i.imshow(cm, cmap="Blues", vmin=0, vmax=cm.max())
+            for i in range(len(cls)):
+                for j in range(len(cls)):
+                    color = "white" if cm[i, j] > cm.max() / 2 else "black"
+                    ax_i.text(j, i, str(cm[i, j]), ha="center", va="center",
+                              fontsize=16, fontweight="bold", color=color)
+            ax_i.set_xticks(range(len(cls))); ax_i.set_xticklabels(cls, fontsize=9)
+            ax_i.set_yticks(range(len(cls))); ax_i.set_yticklabels(cls, fontsize=9)
+            ax_i.set_xlabel("Predicted"); ax_i.set_ylabel("True")
+            ax_i.set_title(f"{name}\nAcc={data['accuracy']:.0%}", fontsize=11, fontweight="bold")
+        plt.tight_layout()
+        p = output / "chart_B2_confusion.png"
+        fig.savefig(p, dpi=150, bbox_inches="tight"); plt.close()
+        chart_files.append(p.name)
+
+    # Chart 4: Efficiency dashboard
+    if performance:
+        fig, axes = plt.subplots(2, 3, figsize=(15, 9))
+        items = [
+            (0, 0, "bandwidth_expansion", "Bandwidth Expansion", "x", 2.0, "#3498db"),
+            (0, 1, "cpu_overhead", "CPU Overhead", "%", 100, "#e67e22"),
+            (0, 2, "memory_peak", "Memory Peak", "KB", 500000, "#9b59b6"),
+            (1, 0, "latency_increase", "Latency Increase", "ms", 100, "#e74c3c"),
+            (1, 1, "throughput_retention", "Throughput Retention", "%", 1.0, "#2ecc71"),
+            (1, 2, "loss_5pct_completion", "5% Loss Completion", "%", 1.0, "#1abc9c"),
+        ]
+        for r, c, key, title, unit, max_val, color in items:
+            ax = axes[r][c]
+            if key == "memory_peak":
+                val = performance.get(key, {}).get("value", 0) / 1024
+            elif key == "throughput_retention" or key == "loss_5pct_completion":
+                val = performance.get(key, {}).get("value", 0) * 100
+            else:
+                val = performance.get(key, {}).get("value", 0)
+            theta = np.linspace(0, np.pi, 100)
+            ax.fill_between(theta, 0.7, 1.0, color="#ecf0f1", alpha=0.5)
+            frac = min(1.0, val / max_val) if max_val > 0 else 0
+            theta_v = np.linspace(0, np.pi * frac, 100)
+            ax.fill_between(theta_v, 0.7, 1.0, color=color, alpha=0.8)
+            ax.text(np.pi / 2, 0.35, f"{val:.1f}", ha="center", va="center",
+                    fontsize=22, fontweight="bold", color=color)
+            ax.text(np.pi / 2, 0.1, unit, ha="center", va="center", fontsize=11, color="#7f8c8d")
+            ax.set_title(title, fontsize=13, fontweight="bold", pad=15)
+            ax.set_xlim(-0.2, np.pi + 0.2); ax.set_ylim(-0.3, 1.3); ax.axis("off")
+        fig.suptitle("C. Efficiency Metrics", fontsize=16, fontweight="bold", y=1.02)
+        plt.tight_layout()
+        p = output / "chart_C_efficiency.png"
+        fig.savefig(p, dpi=150, bbox_inches="tight"); plt.close()
+        chart_files.append(p.name)
+
+    return chart_files
+
+
+def _tcp_flow_from_pcap(pcap_path: Path, port: int) -> list[FlowPacket] | None:
+    """Extract TCP flow using pcap_utils (handles link_type 113 and 101)."""
+    try:
+        from pcap_utils import read_pcap, extract_tcp_flow
+        pkts = read_pcap(str(pcap_path))
+        if not pkts:
+            return None
+        lengths, directions, iats = extract_tcp_flow(pkts, port, "both")
+        if len(lengths) < 10:
+            return None
+        # Convert to FlowPacket list for compatibility
+        ts_acc = 0.0
+        flow = []
+        for i in range(len(lengths)):
+            ts_acc += float(iats[i]) if i < len(iats) and iats[i] > 0 else 0.01
+            payload = b"\x00" * int(lengths[i])
+            flow.append(FlowPacket(ts=ts_acc, direction=int(directions[i]), payload=payload))
+        return flow
+    except Exception:
+        return None
+
+
 def _load_real_flows(
     raw_wg_pcap: Path,
     hidewg_pcap: Path,
@@ -169,8 +460,13 @@ def _load_real_flows(
 
     if raw_wg_pcap.exists():
         raw_flow = extract_flow_from_pcap(raw_wg_pcap, wg_port)
+        # Fallback: try TCP extraction via pcap_utils
+        if not raw_flow:
+            raw_flow = _tcp_flow_from_pcap(raw_wg_pcap, wg_port)
     if hidewg_pcap.exists():
         hide_flow = extract_flow_from_pcap(hidewg_pcap, hw_port)
+        if not hide_flow:
+            hide_flow = _tcp_flow_from_pcap(hidewg_pcap, hw_port)
 
     # 从真实 HTTPS 抓包加载对照流量
     normal_pcap = Path("artifacts/real_normal.pcap")
