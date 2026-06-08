@@ -1,0 +1,199 @@
+{
+  "A_function_correctness": {
+    "passed": true,
+    "tests": {
+      "basic_connectivity": true,
+      "tcp_file_integrity": true,
+      "udp_stream": true,
+      "adapter_loopback": true,
+      "large_packet_fragmentation": true,
+      "abnormal_packet_handling": true,
+      "state_observability": true
+    }
+  },
+  "B1_rule_detection": {
+    "raw_wireguard_rule_hit_rate": 0.625,
+    "hidewg_rule_hit_rate": 0.0012,
+    "rule_hit_reduction": 0.6238,
+    "per_rule": {
+      "R1_message_type_first_byte": 0.006060606060606061,
+      "R2_reserved_zero_bytes": 0.0,
+      "R3_typical_wireguard_lengths": 0.0,
+      "R4_handshake_direction_timing": 0,
+      "R5_fixed_keepalive_pattern": 0
+    }
+  },
+  "B2_classifier_detection": {
+    "dataset": {
+      "hidewg_samples": 187,
+      "normal_samples": 155,
+      "wireguard_samples": 0,
+      "feature_dim": 31,
+      "train_size": 239,
+      "test_size": 103
+    },
+    "classifiers": {
+      "LogisticRegression": {
+        "accuracy": 1.0,
+        "precision_macro": 1.0,
+        "recall_macro": 1.0,
+        "f1_macro": 1.0,
+        "auc_macro": 1.0,
+        "confusion_matrix": [
+          [
+            52,
+            0
+          ],
+          [
+            0,
+            51
+          ]
+        ],
+        "classes": [
+          "hidewg",
+          "normal"
+        ]
+      },
+      "RandomForest": {
+        "accuracy": 1.0,
+        "precision_macro": 1.0,
+        "recall_macro": 1.0,
+        "f1_macro": 1.0,
+        "auc_macro": 1.0,
+        "confusion_matrix": [
+          [
+            52,
+            0
+          ],
+          [
+            0,
+            51
+          ]
+        ],
+        "classes": [
+          "hidewg",
+          "normal"
+        ]
+      },
+      "SVM": {
+        "accuracy": 1.0,
+        "precision_macro": 1.0,
+        "recall_macro": 1.0,
+        "f1_macro": 1.0,
+        "auc_macro": 1.0,
+        "confusion_matrix": [
+          [
+            52,
+            0
+          ],
+          [
+            0,
+            51
+          ]
+        ],
+        "classes": [
+          "hidewg",
+          "normal"
+        ]
+      },
+      "KNN": {
+        "accuracy": 1.0,
+        "precision_macro": 1.0,
+        "recall_macro": 1.0,
+        "f1_macro": 1.0,
+        "auc_macro": 1.0,
+        "confusion_matrix": [
+          [
+            52,
+            0
+          ],
+          [
+            0,
+            51
+          ]
+        ],
+        "classes": [
+          "hidewg",
+          "normal"
+        ]
+      }
+    }
+  },
+  "C_efficiency": {
+    "baseline_throughput": {
+      "value": 143530542.33,
+      "unit": "bytes_per_second"
+    },
+    "hidewg_throughput": {
+      "value": 3958189.63,
+      "unit": "bytes_per_second"
+    },
+    "throughput_retention": {
+      "value": 0.027577,
+      "unit": "ratio"
+    },
+    "latency_increase": {
+      "value": 42.0,
+      "unit": "ms"
+    },
+    "bandwidth_expansion": {
+      "value": 1.365661,
+      "unit": "ratio"
+    },
+    "cpu_overhead": {
+      "value": 76.8,
+      "unit": "percent",
+      "note": "encode+decode CPU time / wall time"
+    },
+    "memory_peak": {
+      "value": 83599,
+      "unit": "bytes",
+      "note": "82 KB"
+    },
+    "completed_packets": {
+      "value": 240.0,
+      "unit": "packets"
+    },
+    "loss_1pct_completion": {
+      "value": 0.99,
+      "unit": "ratio"
+    },
+    "loss_3pct_completion": {
+      "value": 0.975,
+      "unit": "ratio"
+    },
+    "loss_5pct_completion": {
+      "value": 0.945,
+      "unit": "ratio"
+    },
+    "concurrency_stability": {
+      "value": 1.0,
+      "unit": "pass_ratio"
+    },
+    "baseline_cpu_time": {
+      "value": 0.0,
+      "unit": "seconds"
+    },
+    "hidewg_cpu_time": {
+      "value": 0.015625,
+      "unit": "seconds"
+    },
+    "baseline_sink": {
+      "value": 1739.0,
+      "unit": "debug_checksum"
+    },
+    "rtt_hidewg": {
+      "value": 67.0,
+      "unit": "ms"
+    },
+    "rtt_direct": {
+      "value": 25.0,
+      "unit": "ms"
+    },
+    "encode_decode_throughput": {
+      "value": 5.72,
+      "unit": "MB/s",
+      "note": "pure encode+decode, no network"
+    }
+  }
+}
