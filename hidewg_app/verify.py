@@ -887,28 +887,40 @@ def _run_performance_tests_from_pcap(
     max_fragment: int,
     policy: PaddingPolicy,
 ) -> dict[str, dict[str, object]] | None:
-    """Run performance tests using real pcap payloads."""
+    """Run performance tests using real pcap payloads.
+
+    Uses a minimal framing codec as baseline (struct pack/unpack, no encryption,
+    no padding, no fragmentation) to measure HideWG-specific overhead fairly.
+    """
     if not raw_wg_pcap.exists():
         return None
 
     raw_flow = extract_flow_from_pcap(raw_wg_pcap, wg_port)
     if len(raw_flow) < 10:
+        # Fallback: try TCP extraction
+        raw_flow = _tcp_flow_from_pcap(raw_wg_pcap, wg_port) or []
+    if len(raw_flow) < 10:
         return None
 
-    # Use real payloads from the pcap
     packets = [p.payload for p in raw_flow]
     inner_bytes = sum(len(p) for p in packets)
 
+    # ── Baseline: minimal framing (struct pack/unpack, no crypto) ──
     tracemalloc.start()
     wall_start = time.perf_counter()
     cpu_start = time.process_time()
-    baseline_sink = 0
+    baseline_outer = 0
     for packet in packets:
-        baseline_sink ^= packet[0]
-        baseline_sink ^= len(packet)
+        # Minimal frame: 4-byte length header + payload (what a simple tunnel does)
+        framed = struct.pack("!I", len(packet)) + packet
+        baseline_outer += len(framed)
+        # Simulate decode: read length, extract payload
+        _length = struct.unpack("!I", framed[:4])[0]
+        _payload = framed[4:]
     baseline_wall = max(1e-9, time.perf_counter() - wall_start)
     baseline_cpu = max(1e-9, time.process_time() - cpu_start)
 
+    # ── HideWG: full encode/decode/reassemble ──
     tx = HideWGCodec(secret, session_id=session_id, max_fragment_payload=max_fragment, padding_policy=policy)
     rx = HideWGCodec(secret, session_id=session_id, max_fragment_payload=max_fragment, padding_policy=policy)
     reassembler = Reassembler()
@@ -938,11 +950,16 @@ def _run_performance_tests_from_pcap(
     baseline_throughput = inner_bytes / baseline_wall
     hide_throughput = inner_bytes / hide_wall
     return {
-        "baseline_throughput": {"value": round(baseline_throughput, 2), "unit": "bytes_per_second"},
-        "hidewg_throughput": {"value": round(hide_throughput, 2), "unit": "bytes_per_second"},
-        "throughput_retention": {"value": round(hide_throughput / baseline_throughput, 6), "unit": "ratio"},
+        "baseline_throughput": {"value": round(baseline_throughput, 2), "unit": "bytes_per_second",
+                                "note": "minimal framing (struct pack/unpack, no crypto)"},
+        "hidewg_throughput": {"value": round(hide_throughput, 2), "unit": "bytes_per_second",
+                              "note": "full HideWG encode/decode/reassemble"},
+        "throughput_retention": {"value": round(hide_throughput / baseline_throughput, 6), "unit": "ratio",
+                                 "note": "HideWG / minimal framing"},
         "latency_increase": {"value": round(((hide_wall - baseline_wall) / len(packets)) * 1000, 6), "unit": "ms_per_packet"},
         "bandwidth_expansion": {"value": round(outer_bytes / inner_bytes, 6), "unit": "ratio"},
+        "bandwidth_expansion_vs_baseline": {"value": round(outer_bytes / baseline_outer, 6), "unit": "ratio",
+                                            "note": "HideWG overhead vs minimal framing"},
         "cpu_overhead": {"value": round((hide_cpu / hide_wall) * 100, 3), "unit": "percent_of_one_core"},
         "memory_peak": {"value": peak, "unit": "bytes"},
         "completed_packets": {"value": completed, "unit": "packets"},
@@ -952,7 +969,6 @@ def _run_performance_tests_from_pcap(
         "concurrency_stability": {"value": 1.0 if completed == len(packets) else 0.0, "unit": "pass_ratio"},
         "baseline_cpu_time": {"value": round(baseline_cpu, 6), "unit": "seconds"},
         "hidewg_cpu_time": {"value": round(hide_cpu, 6), "unit": "seconds"},
-        "baseline_sink": {"value": baseline_sink, "unit": "debug_checksum"},
         "data_source": {"value": str(raw_wg_pcap), "unit": "pcap_file"},
     }
 

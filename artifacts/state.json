@@ -1,8 +1,8 @@
 {
-  "pid": 8592,
+  "pid": 31604,
   "role": "verify",
   "session_state": "COMPLETE",
-  "uptime_seconds": 6.234,
+  "uptime_seconds": 7.797,
   "inner_packets_sent": 138,
   "inner_packets_received": 138,
   "outer_packets_sent": 273,
@@ -16,6 +16,6 @@
   "reassembly_failures": 1,
   "authentication_failures": 1,
   "replay_drops": 1,
-  "current_throughput_bps": 356011.55,
+  "current_throughput_bps": 284644.86,
   "current_latency_estimate_ms": 0.0
 }
