@@ -41,11 +41,11 @@
     "state": "state.json"
   },
   "summary": {
-    "raw_rule_hit_rate": -1,
+    "raw_rule_hit_rate": 0.625,
     "hidewg_rule_hit_rate": 0.0012121212121212121,
-    "classifier_accuracy": -1,
-    "throughput_retention": -1,
-    "bandwidth_expansion": -1
+    "classifier_accuracy": 1.0,
+    "throughput_retention": 0.027577,
+    "bandwidth_expansion": 1.365661
   },
   "limitations": [
     "All traffic data is from real pcap captures — no synthetic WireGuard-shaped payloads.",

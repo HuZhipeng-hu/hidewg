@@ -1,5 +1,16 @@
 {
   "rule_detection": {
+    "raw_wireguard": {
+      "overall_rule_hit_rate": 0.625,
+      "per_rule": {
+        "R1_message_type_first_byte": 1.0,
+        "R2_reserved_zero_bytes": 1.0,
+        "R3_typical_wireguard_lengths": 0.125,
+        "R4_handshake_direction_timing": 0,
+        "R5_fixed_keepalive_pattern": 1
+      },
+      "packet_count": 240
+    },
     "hidewg": {
       "overall_rule_hit_rate": 0.0012121212121212121,
       "per_rule": {
@@ -10,12 +21,74 @@
         "R5_fixed_keepalive_pattern": 0
       },
       "packet_count": 330
-    }
+    },
+    "rule_hit_reduction": 0.6237878787878788
   },
-  "classifier_detection": {},
+  "classifier_detection": {
+    "model": "nearest_centroid_std_scaled",
+    "train_samples": 921,
+    "test_samples": 395,
+    "accuracy": 1.0,
+    "precision_macro": 1.0,
+    "recall_macro": 1.0,
+    "f1_macro": 1.0,
+    "auc_macro": 1.0,
+    "labels": [
+      "control",
+      "hidewg",
+      "raw_wireguard"
+    ],
+    "confusion_matrix": {
+      "control": {
+        "control": 334,
+        "hidewg": 0,
+        "raw_wireguard": 0
+      },
+      "hidewg": {
+        "control": 0,
+        "hidewg": 30,
+        "raw_wireguard": 0
+      },
+      "raw_wireguard": {
+        "control": 0,
+        "hidewg": 0,
+        "raw_wireguard": 31
+      }
+    },
+    "per_label": {
+      "control": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "hidewg": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "raw_wireguard": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      }
+    },
+    "feature_set": [
+      "length statistics and histogram",
+      "direction ratios",
+      "inter-arrival timing",
+      "burst lengths",
+      "startup packet length and direction sequence",
+      "packet-length autocorrelation (lags 1-4, CNN-simulating)",
+      "direction Markov transition probabilities",
+      "sliding-window variance (CNN local filter simulation)",
+      "interval autocorrelation (periodicity detection)",
+      "burst length variance"
+    ],
+    "data_source": "real pcap captures"
+  },
   "data_source": {
-    "raw_wireguard_pcap": "not found: .hidewg\\captures\\raw_wireguard.pcap",
-    "hidewg_pcap": ".hidewg\\real_capture.pcap",
-    "note": "All traffic data from real pcap captures. Control from artifacts/real_normal.pcap. Some pcaps missing — partial analysis only."
+    "raw_wireguard_pcap": "artifacts\\raw_wireguard.pcap",
+    "hidewg_pcap": "artifacts\\capture.pcap",
+    "note": "All traffic data from real pcap captures. Control from artifacts/real_normal.pcap."
   }
 }

@@ -52,10 +52,15 @@ def run_verify(config: dict[str, Any], output_dir: str | Path) -> dict[str, Any]
     function_tests = _run_function_tests(secret, session_id, max_fragment, policy, stats, log_path)
 
     # ── 从真实 pcap 文件加载流量 ──
-    raw_wg_pcap = Path(config.get("raw_wireguard_pcap", ".hidewg/captures/raw_wireguard.pcap"))
-    hidewg_pcap = Path(config.get("hidewg_pcap", ".hidewg/captures/hidewg_outer.pcap"))
-    wg_port = as_int(config, "wireguard_port", 51821)
-    hw_port = as_int(config, "hidewg_outer_port", 55821)
+    # 自动搜索 pcap 文件：优先配置指定路径，其次 artifacts/，最后 .hidewg/
+    raw_wg_pcap = _find_pcap(config.get("raw_wireguard_pcap"), [
+        "artifacts/raw_wireguard.pcap", ".hidewg/captures/raw_wireguard.pcap", ".hidewg/verify/raw_wireguard.pcap",
+    ])
+    hidewg_pcap = _find_pcap(config.get("hidewg_pcap"), [
+        "artifacts/capture.pcap", "artifacts/real_hidewg.pcap", ".hidewg/captures/hidewg_outer.pcap", ".hidewg/verify/capture.pcap",
+    ])
+    wg_port = as_int(config, "wireguard_port", 51820)
+    hw_port = as_int(config, "hidewg_outer_port", 55820)
 
     raw_flow, hide_flow, control_flow = _load_real_flows(
         raw_wg_pcap, hidewg_pcap, wg_port, hw_port, seed
@@ -135,6 +140,19 @@ def run_verify(config: dict[str, Any], output_dir: str | Path) -> dict[str, Any]
     }
     (output / "verify_report.json").write_text(json.dumps(verify_report, indent=2, ensure_ascii=False), encoding="utf-8")
     return verify_report
+
+
+def _find_pcap(config_path: str | None, fallbacks: list[str]) -> Path:
+    """Find a pcap file: check config path first, then fallback candidates."""
+    if config_path:
+        p = Path(config_path)
+        if p.exists():
+            return p
+    for candidate in fallbacks:
+        p = Path(candidate)
+        if p.exists():
+            return p
+    return Path(fallbacks[0]) if fallbacks else Path("not_found.pcap")
 
 
 def _load_real_flows(
