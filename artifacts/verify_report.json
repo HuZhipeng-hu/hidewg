@@ -4,15 +4,19 @@
   "function_tests": {
     "basic_connectivity": {
       "passed": true,
-      "detail": "WireGuard-shaped ping payload restored"
+      "detail": "Tunnel ping OK (5 packets)"
     },
     "tcp_file_integrity": {
       "passed": true,
-      "detail": "SHA256 matched after chunked transfer"
+      "detail": "File SHA256 matched through tunnel (19840 bytes)"
     },
     "udp_stream": {
       "passed": true,
-      "detail": "UDP datagram order and bytes preserved"
+      "detail": "UDP stream OK through tunnel (20 datagrams)"
+    },
+    "tunnel_connectivity": {
+      "passed": true,
+      "detail": "ping=5/5, file=OK (19840B), udp=20/20"
     },
     "adapter_loopback": {
       "passed": true,
@@ -49,8 +53,8 @@
   },
   "summary": {
     "function_passed": true,
-    "function_tests_passed": 7,
-    "function_tests_total": 7,
+    "function_tests_passed": 8,
+    "function_tests_total": 8,
     "raw_rule_hit_rate": 0.625,
     "hidewg_rule_hit_rate": 0.2,
     "course_classifiers": {
@@ -135,11 +139,11 @@
         ]
       }
     },
-    "throughput_retention": 0.012074,
-    "bandwidth_expansion": 1.365661,
-    "latency_increase_ms": 0.094063,
-    "cpu_overhead_pct": 136.756,
-    "memory_peak_kb": 31.6,
+    "throughput_retention": 0.008485,
+    "bandwidth_expansion": 1.378284,
+    "latency_increase_ms": 0.129275,
+    "cpu_overhead_pct": 149.801,
+    "memory_peak_kb": 31.5,
     "loss_1pct": 0.985,
     "loss_3pct": 0.965,
     "loss_5pct": 0.915

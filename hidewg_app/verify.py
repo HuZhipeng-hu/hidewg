@@ -602,6 +602,7 @@ def _run_function_tests(
             raise AssertionError("roundtrip did not complete")
         return output
 
+    # 编解码 roundtrip 测试 (不需要网络)
     ping_payload = b"\x04\x00\x00\x00" + b"p" * 60
     tests["basic_connectivity"] = _test_result(roundtrip(ping_payload) == ping_payload, "WireGuard-shaped ping payload restored")
 
@@ -614,6 +615,17 @@ def _run_function_tests(
 
     udp_packets = [os.urandom(size) for size in [80, 120, 300, 700, 1100, 60, 512, 980]]
     tests["udp_stream"] = _test_result(all(roundtrip(packet) == packet for packet in udp_packets), "UDP datagram order and bytes preserved")
+
+    # 真实隧道测试 (通过 adapter proxy 发送实际 UDP 流量)
+    tunnel_passed, tunnel_detail, tunnel_results = _run_real_tunnel_tests(secret, session_id, max_fragment)
+    tests["tunnel_connectivity"] = _test_result(tunnel_passed, tunnel_detail)
+    # 用真实隧道测试覆盖 A 类指标
+    if tunnel_results.get("ping_ok"):
+        tests["basic_connectivity"] = _test_result(True, f"Tunnel ping OK ({tunnel_results['ping_count']} packets)")
+    if tunnel_results.get("file_ok"):
+        tests["tcp_file_integrity"] = _test_result(True, f"File SHA256 matched through tunnel ({tunnel_results['file_bytes']} bytes)")
+    if tunnel_results.get("udp_ok"):
+        tests["udp_stream"] = _test_result(True, f"UDP stream OK through tunnel ({tunnel_results['udp_count']} datagrams)")
 
     loopback_passed, loopback_detail = _run_proxy_loopback_test(secret, session_id, max_fragment)
     tests["adapter_loopback"] = _test_result(loopback_passed, loopback_detail)
@@ -664,6 +676,138 @@ def _run_function_tests(
     tests["state_observability"] = _test_result(all(key in observable for key in required), "Required runtime counters exported")
     stats.append_log(log_path, "function_tests_complete", {"tests": tests})
     return tests
+
+
+def _run_real_tunnel_tests(
+    secret: str, session_id: int, max_fragment: int,
+) -> tuple[bool, str, dict]:
+    """Run real tunnel tests: send actual UDP traffic through client→server adapter proxy.
+
+    Tests A-class requirements:
+    - basic_connectivity: multiple ping-like packets through tunnel
+    - tcp_file_integrity: chunked file transfer with SHA256 verification
+    - udp_stream: multiple datagrams of varying sizes
+    """
+    client_inner = _free_udp_port()
+    client_outer = _free_udp_port()
+    server_inner = _free_udp_port()
+    server_outer = _free_udp_port()
+    server_wg = _free_udp_port()
+
+    server_wg_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server_wg_sock.bind(("127.0.0.1", server_wg))
+    server_wg_sock.settimeout(5.0)
+
+    common_cfg = {
+        "shared_secret": secret,
+        "session_id": session_id,
+        "max_fragment_payload": max_fragment,
+        "padding_buckets": [60, 90, 128, 256, 512, 768, 1024, 1280, 1400],
+    }
+    client_proxy = HideWGProxy("client", {
+        **common_cfg,
+        "inner_listen_host": "127.0.0.1", "inner_listen_port": client_inner,
+        "outer_listen_host": "127.0.0.1", "outer_listen_port": client_outer,
+        "peer_host": "127.0.0.1", "peer_port": server_outer,
+        "state_path": ".hidewg/verify_client_state.json",
+        "log_path": ".hidewg/verify_client_runtime.jsonl",
+        "pid_path": ".hidewg/verify_client.pid",
+    })
+    server_proxy = HideWGProxy("server", {
+        **common_cfg,
+        "inner_listen_host": "127.0.0.1", "inner_listen_port": server_inner,
+        "outer_listen_host": "127.0.0.1", "outer_listen_port": server_outer,
+        "peer_host": "127.0.0.1", "peer_port": client_outer,
+        "wireguard_host": "127.0.0.1", "wireguard_port": server_wg,
+        "state_path": ".hidewg/verify_server_state.json",
+        "log_path": ".hidewg/verify_server_runtime.jsonl",
+        "pid_path": ".hidewg/verify_server.pid",
+    })
+
+    results = {"ping_ok": False, "file_ok": False, "udp_ok": False,
+               "ping_count": 0, "file_bytes": 0, "udp_count": 0}
+    client_thread = threading.Thread(target=client_proxy.run, daemon=True)
+    server_thread = threading.Thread(target=server_proxy.run, daemon=True)
+    sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sender.settimeout(3.0)
+
+    try:
+        server_thread.start()
+        client_thread.start()
+        time.sleep(0.5)  # Wait for proxies to initialize
+
+        # 1. Ping test: send 5 ping-like packets, verify all arrive
+        ping_ok = 0
+        for i in range(5):
+            payload = b"\x04\x00\x00\x00" + b"PING" + bytes([i]) + os.urandom(32)
+            sender.sendto(payload, ("127.0.0.1", client_inner))
+            try:
+                received, _ = server_wg_sock.recvfrom(65535)
+                if received == payload:
+                    ping_ok += 1
+            except socket.timeout:
+                break
+        results["ping_count"] = ping_ok
+        results["ping_ok"] = ping_ok >= 3  # At least 3 of 5 must arrive
+
+        # 2. File integrity test: send 20 packets with known payload, verify SHA256
+        #    Each packet is sent as a complete UDP datagram through the tunnel
+        file_chunks = []
+        for i in range(20):
+            chunk = hashlib.sha256(f"chunk-{i}".encode()).digest() + os.urandom(960)
+            file_chunks.append(chunk)
+        file_data = b"".join(file_chunks)
+        file_hash = hashlib.sha256(file_data).digest()
+
+        for chunk in file_chunks:
+            sender.sendto(chunk, ("127.0.0.1", client_inner))
+            time.sleep(0.01)  # Small delay to avoid overwhelming
+
+        # Receive all chunks
+        received_chunks = []
+        server_wg_sock.settimeout(2.0)
+        for _ in range(20):
+            try:
+                pkt, _ = server_wg_sock.recvfrom(65535)
+                received_chunks.append(pkt)
+            except socket.timeout:
+                break
+        received_data = b"".join(received_chunks)
+        received_hash = hashlib.sha256(received_data).digest()
+        results["file_bytes"] = len(received_data)
+        results["file_ok"] = received_hash == file_hash and len(received_chunks) == 20
+
+        # 3. UDP stream test: send 20 datagrams of varying sizes
+        udp_ok = 0
+        server_wg_sock.settimeout(1.0)
+        for size in [64, 128, 256, 512, 1024, 80, 200, 400, 800, 1200,
+                     64, 128, 256, 512, 1024, 80, 200, 400, 800, 1200]:
+            payload = os.urandom(size)
+            sender.sendto(payload, ("127.0.0.1", client_inner))
+            try:
+                received, _ = server_wg_sock.recvfrom(65535)
+                if received == payload:
+                    udp_ok += 1
+            except socket.timeout:
+                pass
+        results["udp_count"] = udp_ok
+        results["udp_ok"] = udp_ok >= 15  # At least 15 of 20 must arrive
+
+        all_ok = results["ping_ok"] and results["file_ok"] and results["udp_ok"]
+        detail = (f"ping={results['ping_count']}/5, "
+                  f"file={'OK' if results['file_ok'] else 'FAIL'} ({results['file_bytes']}B), "
+                  f"udp={results['udp_count']}/20")
+        return all_ok, detail, results
+
+    except OSError as exc:
+        return False, f"Tunnel test failed: {exc}", results
+    finally:
+        client_proxy.stop()
+        server_proxy.stop()
+        client_thread.join(timeout=2.0)
+        server_thread.join(timeout=2.0)
+        sender.close()
+        server_wg_sock.close()
 
 
 def _run_proxy_loopback_test(secret: str, session_id: int, max_fragment: int) -> tuple[bool, str]:
